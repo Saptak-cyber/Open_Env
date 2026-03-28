@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for PR Code Review Assistant
 
 # Builder stage
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -28,6 +28,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Create non-root user FIRST
+RUN useradd -m -u 1000 appuser
+
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
@@ -39,14 +42,14 @@ COPY baseline/ ./baseline/
 COPY openenv.yaml ./
 COPY pyproject.toml ./
 
+# Fix ownership
+RUN chown -R appuser:appuser /app
+
 # Setup environment
-ENV PYTHONPATH="/app:$PYTHONPATH"
+ENV PYTHONPATH="/app"
 ENV PYTHONUNBUFFERED=1
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
-
+# Switch to non-root user
 USER appuser
 
 # Expose port
