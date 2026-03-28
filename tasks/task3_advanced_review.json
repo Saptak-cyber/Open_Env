@@ -1,0 +1,179 @@
+{
+  "task_id": "task3_advanced_review",
+  "name": "Advanced Architectural Review",
+  "difficulty": "hard",
+  "min_passing_score": 0.8,
+  "grading_weights": {
+    "precision": 0.4,
+    "recall": 0.35,
+    "severity": 0.2,
+    "coverage": 0.05
+  },
+  "pr_scenario": {
+    "pr_id": "PR-003",
+    "metadata": {
+      "title": "Implement caching layer and improve GraphQL performance",
+      "description": "This PR adds a cache manager singleton, optimizes GraphQL resolver queries, and improves task processing error handling.",
+      "author": "senior-dev",
+      "target_branch": "main",
+      "files_changed": 3,
+      "additions_total": 32,
+      "deletions_total": 5
+    },
+    "files": [
+      {
+        "path": "core/cache.py",
+        "language": "python",
+        "additions": [
+          "12: class CacheManager:",
+          "13:     _instance = None",
+          "14:     ",
+          "15:     def __new__(cls):",
+          "16:         if cls._instance is None:",
+          "17:             cls._instance = super().__new__(cls)",
+          "18:             cls._instance.cache = {}",
+          "19:         return cls._instance",
+          "20:     ",
+          "25:     def get(self, key, user_id):",
+          "26:         cache_key = f\"{key}_{user_id}\"",
+          "27:         if cache_key in self.cache:",
+          "28:             return self.cache[cache_key]",
+          "29:         data = self.fetch_from_db(key, user_id)",
+          "30:         self.cache[cache_key] = data",
+          "31:         return data"
+        ],
+        "deletions": [],
+        "context": [
+          "10: # Singleton cache manager for application-wide caching",
+          "11: "
+        ],
+        "hunks": [
+          {
+            "start_line": 12,
+            "end_line": 31,
+            "content": "class CacheManager:\n    _instance = None\n    \n    def __new__(cls):\n        if cls._instance is None:\n            cls._instance = super().__new__(cls)\n            cls._instance.cache = {}\n        return cls._instance\n    \n    def get(self, key, user_id):\n        cache_key = f\"{key}_{user_id}\"\n        if cache_key in self.cache:\n            return self.cache[cache_key]\n        data = self.fetch_from_db(key, user_id)\n        self.cache[cache_key] = data\n        return data"
+          }
+        ]
+      },
+      {
+        "path": "api/graphql_resolver.py",
+        "language": "python",
+        "additions": [
+          "45: def resolve_user_posts(parent, info, limit=10):",
+          "46:     user_id = parent.id",
+          "47:     query = \"\"\"",
+          "48:         SELECT * FROM posts ",
+          "49:         WHERE user_id = %s ",
+          "50:         ORDER BY created_at DESC",
+          "51:     \"\"\"",
+          "52:     posts = db.execute(query, (user_id,))",
+          "53:     return posts[:limit]"
+        ],
+        "deletions": [
+          "45: def resolve_user_posts(parent, info, limit=10):",
+          "46:     return Post.query.filter_by(user_id=parent.id).limit(limit).all()"
+        ],
+        "context": [
+          "43: # GraphQL resolver for user posts",
+          "44: "
+        ],
+        "hunks": [
+          {
+            "start_line": 45,
+            "end_line": 53,
+            "content": "def resolve_user_posts(parent, info, limit=10):\n    user_id = parent.id\n    query = \"\"\"\n        SELECT * FROM posts \n        WHERE user_id = %s \n        ORDER BY created_at DESC\n    \"\"\"\n    posts = db.execute(query, (user_id,))\n    return posts[:limit]"
+          }
+        ]
+      },
+      {
+        "path": "workers/task_processor.py",
+        "language": "python",
+        "additions": [
+          "78: def process_task(task_data):",
+          "79:     try:",
+          "80:         result = execute_task(task_data)",
+          "81:         save_result(result)",
+          "82:     except Exception as e:",
+          "83:         log.error(f\"Task failed: {e}\")",
+          "84:         pass"
+        ],
+        "deletions": [
+          "78: def process_task(task_data):",
+          "79:     result = execute_task(task_data)",
+          "80:     save_result(result)"
+        ],
+        "context": [
+          "76: # Background task processor",
+          "77: "
+        ],
+        "hunks": [
+          {
+            "start_line": 78,
+            "end_line": 84,
+            "content": "def process_task(task_data):\n    try:\n        result = execute_task(task_data)\n        save_result(result)\n    except Exception as e:\n        log.error(f\"Task failed: {e}\")\n        pass"
+          }
+        ]
+      }
+    ],
+    "ground_truth": {
+      "issues": [
+        {
+          "file": "core/cache.py",
+          "line": 18,
+          "severity": "error",
+          "category": "bug",
+          "description": "Non-thread-safe singleton pattern - __new__ check and assignment are not atomic, can create multiple instances in multi-threaded environment",
+          "cwe": "CWE-362"
+        },
+        {
+          "file": "core/cache.py",
+          "line": 28,
+          "severity": "critical",
+          "category": "security",
+          "description": "Missing access control check - cache returns data based only on key without verifying the requesting user has permission to access it, enabling privilege escalation",
+          "cwe": "CWE-639"
+        },
+        {
+          "file": "core/cache.py",
+          "line": 30,
+          "severity": "warning",
+          "category": "performance",
+          "description": "No TTL or cache eviction policy - unbounded cache growth leads to memory leaks and eventual OOM errors",
+          "cwe": "CWE-770"
+        },
+        {
+          "file": "api/graphql_resolver.py",
+          "line": 52,
+          "severity": "warning",
+          "category": "performance",
+          "description": "Missing LIMIT in SQL query - fetches all posts from database then slices in Python, causing performance issues and memory overhead for users with many posts",
+          "cwe": null
+        },
+        {
+          "file": "api/graphql_resolver.py",
+          "line": 53,
+          "severity": "error",
+          "category": "bug",
+          "description": "Inefficient memory usage - loads entire result set into memory before slicing, should apply LIMIT in SQL to avoid N+1 problem and reduce memory footprint",
+          "cwe": null
+        },
+        {
+          "file": "workers/task_processor.py",
+          "line": 84,
+          "severity": "warning",
+          "category": "maintainability",
+          "description": "Silent exception swallowing - catches all exceptions and only logs them without re-raising or alerting, making debugging difficult and hiding system failures",
+          "cwe": null
+        },
+        {
+          "file": "workers/task_processor.py",
+          "line": 84,
+          "severity": "info",
+          "category": "maintainability",
+          "description": "No retry mechanism - failed tasks are not retried, consider implementing exponential backoff retry for transient failures",
+          "cwe": null
+        }
+      ]
+    }
+  }
+}

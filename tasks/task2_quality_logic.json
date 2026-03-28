@@ -1,0 +1,162 @@
+{
+  "task_id": "task2_quality_logic",
+  "name": "Quality and Logic Review",
+  "difficulty": "medium",
+  "min_passing_score": 0.75,
+  "grading_weights": {
+    "precision": 0.35,
+    "recall": 0.4,
+    "severity": 0.15,
+    "coverage": 0.1
+  },
+  "pr_scenario": {
+    "pr_id": "PR-002",
+    "metadata": {
+      "title": "Add payment processing and user validation",
+      "description": "This PR implements payment processing logic and improves user validation. Includes updates to payment service, email validator, and user model.",
+      "author": "mid-level-dev",
+      "target_branch": "main",
+      "files_changed": 3,
+      "additions_total": 26,
+      "deletions_total": 2
+    },
+    "files": [
+      {
+        "path": "services/payment.py",
+        "language": "python",
+        "additions": [
+          "42: def process_payment(amount, user_id):",
+          "43:     if amount > 0:",
+          "44:         balance = get_balance(user_id)",
+          "45:         if balance >= amount:",
+          "46:             new_balance = balance - amount",
+          "47:             update_balance(user_id, new_balance)",
+          "48:             return True",
+          "49:     return False"
+        ],
+        "deletions": [],
+        "context": [
+          "40: from db import get_balance, update_balance",
+          "41: "
+        ],
+        "hunks": [
+          {
+            "start_line": 42,
+            "end_line": 49,
+            "content": "def process_payment(amount, user_id):\n    if amount > 0:\n        balance = get_balance(user_id)\n        if balance >= amount:\n            new_balance = balance - amount\n            update_balance(user_id, new_balance)\n            return True\n    return False"
+          }
+        ]
+      },
+      {
+        "path": "utils/validator.py",
+        "language": "python",
+        "additions": [
+          "88: def validate_email(email):",
+          "89:     import re",
+          "90:     pattern = r\".*@.*\"",
+          "91:     if re.match(pattern, email):",
+          "92:         return True",
+          "93:     return False"
+        ],
+        "deletions": [
+          "88: def validate_email(email):",
+          "89:     return '@' in email"
+        ],
+        "context": [
+          "86: # Email validation utilities",
+          "87: "
+        ],
+        "hunks": [
+          {
+            "start_line": 88,
+            "end_line": 93,
+            "content": "def validate_email(email):\n    import re\n    pattern = r\".*@.*\"\n    if re.match(pattern, email):\n        return True\n    return False"
+          }
+        ]
+      },
+      {
+        "path": "models/user.py",
+        "language": "python",
+        "additions": [
+          "15: class User:",
+          "16:     def __init__(self, username, password):",
+          "17:         self.username = username",
+          "18:         self.password = password",
+          "19:         self.login_attempts = 0"
+        ],
+        "deletions": [],
+        "context": [
+          "13: # User model",
+          "14: "
+        ],
+        "hunks": [
+          {
+            "start_line": 15,
+            "end_line": 19,
+            "content": "class User:\n    def __init__(self, username, password):\n        self.username = username\n        self.password = password\n        self.login_attempts = 0"
+          }
+        ]
+      }
+    ],
+    "ground_truth": {
+      "issues": [
+        {
+          "file": "services/payment.py",
+          "line": 47,
+          "severity": "error",
+          "category": "security",
+          "description": "Race condition vulnerability - balance check and update are not atomic, allowing concurrent transactions to overdraw the account",
+          "cwe": "CWE-362"
+        },
+        {
+          "file": "services/payment.py",
+          "line": 43,
+          "severity": "warning",
+          "category": "bug",
+          "description": "Missing upper bound validation - no check for maximum transaction amount allows unreasonably large payments",
+          "cwe": null
+        },
+        {
+          "file": "models/user.py",
+          "line": 18,
+          "severity": "critical",
+          "category": "security",
+          "description": "Storing plaintext password - passwords should be hashed with bcrypt or similar before storage",
+          "cwe": "CWE-256"
+        },
+        {
+          "file": "utils/validator.py",
+          "line": 90,
+          "severity": "warning",
+          "category": "bug",
+          "description": "Weak email validation regex - pattern '.*@.*' is too permissive and allows invalid emails like '@' or 'a@@b'",
+          "cwe": null
+        },
+        {
+          "file": "utils/validator.py",
+          "line": 89,
+          "severity": "info",
+          "category": "style",
+          "description": "Import inside function - 're' module should be imported at module level for better performance and readability",
+          "cwe": null
+        },
+        {
+          "file": "models/user.py",
+          "line": 19,
+          "severity": "warning",
+          "category": "security",
+          "description": "No brute force protection - login_attempts counter exists but there's no logic to lock accounts or rate-limit after failed attempts",
+          "cwe": "CWE-307"
+        },
+        {
+          "file": "utils/validator.py",
+          "line": 92,
+          "severity": "info",
+          "category": "maintainability",
+          "description": "Unnecessary complexity - can simplify 'if condition: return True; return False' to just 'return bool(condition)'",
+          "cwe": null
+        }
+      ]
+    }
+  }
+}

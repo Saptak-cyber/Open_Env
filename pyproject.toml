@@ -1,0 +1,49 @@
+[project]
+name = "pr-review-env"
+version = "1.0.0"
+description = "PR Code Review Assistant - OpenEnv environment for training AI agents"
+requires-python = ">=3.11"
+authors = [
+    {name = "Meta Hackathon Team"}
+]
+readme = "README.md"
+license = {text = "MIT"}
+
+dependencies = [
+    "openenv-core>=0.2.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.6.0",
+    "requests>=2.31.0",
+    "openai>=1.0.0",
+]
+
+[project.scripts]
+server = "pr_review_env.server.app:main"
+baseline = "baseline.baseline_inference:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pr_review_env*", "baseline*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
