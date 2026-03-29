@@ -279,6 +279,9 @@ class ReviewGrader:
         ground_truth: GroundTruth
     ) -> float:
         """Apply penalties based on review decision."""
+        if action.decision is None:
+            return score
+
         # Check if there are critical issues
         has_critical = any(
             issue.severity == "critical" for issue in ground_truth.issues

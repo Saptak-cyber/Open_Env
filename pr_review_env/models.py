@@ -141,8 +141,13 @@ class Action(BaseAction):
         default_factory=list,
         description="General review comments"
     )
-    decision: ReviewDecision = Field(
-        description="Final review decision"
+    decision: Optional[ReviewDecision] = Field(
+        default=None,
+        description="Final review decision (required when submit=true)"
+    )
+    submit: bool = Field(
+        default=False,
+        description="Set true to finalize review and end episode"
     )
 
 

@@ -43,7 +43,8 @@ def test_basic_environment():
         decision=ReviewDecision(
             decision="request_changes",
             summary="Critical security issues found"
-        )
+        ),
+        submit=True
     )
     print("✓ Action created")
 
@@ -63,7 +64,6 @@ def test_basic_environment():
         print(f"  Recall: {obs.feedback.recall:.2f}")
 
     print("\n✅ All tests passed!")
-    return True
 
 if __name__ == "__main__":
     try:

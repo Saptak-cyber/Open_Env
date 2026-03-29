@@ -13,13 +13,7 @@ from uuid import uuid4
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-from ..models import (
-    Action,
-    Observation,
-    PRState,
-    PRStateForAgent,
-    GroundTruth,
-)
+from ..models import Action, Observation, PRState, PRStateForAgent, GroundTruth, ReviewDecision
 from .grader import ReviewGrader
 
 
@@ -33,6 +27,10 @@ class PRReviewEnvironment(Environment):
         self.current_task: Optional[Dict[str, Any]] = None
         self.current_pr: Optional[PRState] = None
         self.episode_done = False
+        self.max_steps = 5
+        self.submitted_inline_comments = []
+        self.submitted_general_comments = []
+        self.last_feedback = None
 
         # Load all available tasks
         self.tasks = self._load_all_tasks()
@@ -113,6 +111,9 @@ class PRReviewEnvironment(Environment):
 
         # Reset episode flag
         self.episode_done = False
+        self.submitted_inline_comments = []
+        self.submitted_general_comments = []
+        self.last_feedback = None
 
         # Create observation (without ground truth for agent)
         pr_state_for_agent = PRStateForAgent(
@@ -129,6 +130,7 @@ class PRReviewEnvironment(Environment):
             metadata={
                 "task_id": self.current_task["task_id"],
                 "difficulty": self.current_task["difficulty"],
+                "max_steps": self.max_steps,
             }
         )
 
@@ -157,18 +159,51 @@ class PRReviewEnvironment(Environment):
         # Increment step count
         self._state.step_count += 1
 
-        # Grade the review
-        feedback = self.grader.grade_review(
-            action,
-            self.current_pr.ground_truth,
-            self.current_task
+        # Keep cumulative review state across the trajectory.
+        self.submitted_inline_comments.extend(action.inline_comments)
+        self.submitted_general_comments.extend(action.general_comments)
+
+        cumulative_action = Action(
+            inline_comments=self.submitted_inline_comments,
+            general_comments=self.submitted_general_comments,
+            decision=action.decision,
+            submit=action.submit
         )
 
-        # Compute reward with multi-signal function
-        reward = self._compute_reward(feedback, action)
+        should_finalize = (
+            action.submit
+            or action.decision is not None
+            or self._state.step_count >= self.max_steps
+        )
 
-        # Mark episode done
-        self.episode_done = True
+        feedback = None
+        if should_finalize:
+            if cumulative_action.decision is None:
+                cumulative_action.decision = ReviewDecision(
+                    decision="request_changes",
+                    summary="Auto-finalized at max steps without explicit final decision."
+                )
+            feedback = self.grader.grade_review(
+                cumulative_action,
+                self.current_pr.ground_truth,
+                self.current_task
+            )
+            reward = self._compute_reward(feedback, cumulative_action)
+            self.episode_done = True
+        else:
+            # Partial-trajectory reward: encourage new signal over previous step.
+            partial_feedback = self.grader.grade_review(
+                Action(
+                    inline_comments=self.submitted_inline_comments,
+                    general_comments=self.submitted_general_comments,
+                    decision=None,
+                    submit=False
+                ),
+                self.current_pr.ground_truth,
+                self.current_task
+            )
+            reward = self._compute_intermediate_reward(partial_feedback, action)
+            self.last_feedback = partial_feedback
 
         # Create PR state for agent (without ground truth)
         pr_state_for_agent = PRStateForAgent(
@@ -180,11 +215,17 @@ class PRReviewEnvironment(Environment):
         return Observation(
             pr_state=pr_state_for_agent,
             feedback=feedback,
-            done=True,
+            done=self.episode_done,
             reward=reward,
             metadata={
                 "task_id": self.current_task["task_id"],
-                "passed": feedback.score >= self.current_task["min_passing_score"]
+                "step_count": self._state.step_count,
+                "max_steps": self.max_steps,
+                "passed": (
+                    feedback.score >= self.current_task["min_passing_score"]
+                    if feedback is not None else None
+                ),
+                "finalized": self.episode_done,
             }
         )
 
@@ -232,6 +273,30 @@ class PRReviewEnvironment(Environment):
 
         # Bound to reasonable range
         return max(-0.1, min(1.1, total_reward))
+
+    def _compute_intermediate_reward(self, partial_feedback, action: Action) -> float:
+        """
+        Intermediate reward for multi-step trajectories.
+        Rewards newly found issues and coverage gains while discouraging spam/duplicates.
+        """
+        prev_tp = self.last_feedback.true_positives if self.last_feedback else 0
+        prev_cov = self.last_feedback.coverage if self.last_feedback else 0.0
+
+        new_tp = max(0, partial_feedback.true_positives - prev_tp)
+        coverage_gain = max(0.0, partial_feedback.coverage - prev_cov)
+
+        existing_keys = {
+            (c.file_path, c.line_number, c.category)
+            for c in self.submitted_inline_comments[:-len(action.inline_comments or [])]
+        }
+        duplicate_count = sum(
+            1 for c in action.inline_comments
+            if (c.file_path, c.line_number, c.category) in existing_keys
+        )
+
+        over_comment_penalty = max(0, len(action.inline_comments) - 4) * 0.01
+        reward = (0.12 * new_tp) + (0.08 * coverage_gain) - (0.03 * duplicate_count) - over_comment_penalty
+        return max(-0.1, min(0.35, reward))
 
     def _compute_early_detection_bonus(self, action: Action) -> float:
         """Bonus for finding critical issues in early files."""

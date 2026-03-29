@@ -63,8 +63,11 @@ curl http://localhost:8000/health
 # List tasks
 curl http://localhost:8000/tasks
 
-# Get baseline scores
+# Get cached baseline scores
 curl http://localhost:8000/baseline
+
+# Trigger live baseline refresh (requires provider API key)
+curl "http://localhost:8000/baseline?refresh=true&provider=openai"
 
 # Reset environment
 curl -X POST http://localhost:8000/reset \
@@ -79,7 +82,7 @@ curl -X POST http://localhost:8000/reset \
 export OPENAI_API_KEY="your-key-here"
 
 # Run baseline evaluation
-python3 baseline/baseline_inference.py
+python3 baseline/baseline_inference.py --temperature 0.0 --seed 42
 ```
 
 ### 5. Build and Test Docker

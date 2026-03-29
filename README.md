@@ -45,7 +45,7 @@ Each episode presents a PR with known ground truth issues. The agent is graded o
 
 ## 🎮 Action Space
 
-Agents submit structured reviews with three components:
+Agents submit structured reviews with four components:
 
 ### 1. Inline Comments
 Comment on specific lines of code:
@@ -75,6 +75,14 @@ Final verdict:
 {
   "decision": "request_changes",  # approve | request_changes | comment
   "summary": "Found 3 critical security issues that must be addressed before merging"
+}
+```
+
+### 4. Submit Flag (Multi-Step Episodes)
+Set `submit=true` when finalizing the episode:
+```python
+{
+  "submit": true
 }
 ```
 
@@ -195,24 +203,12 @@ score = (
 
 ## 💰 Reward Function
 
-Multi-signal reward with partial progress:
+The environment is now multi-step (`max_steps=5`) with dense trajectory rewards:
 
-```python
-reward = (
-    base_score              # Grader score (0.0-1.0)
-    + early_detection       # +0.05 for finding critical issues early
-    + actionability         # +0.03 for providing suggested fixes
-    + coverage              # +0.02 for thorough review
-    - false_positive_penalty # -0.1 for excessive false positives
-)
-# Bounded: [-0.1, 1.1]
-```
+- **Intermediate reward** (`done=false`): positive signal for newly discovered true positives and coverage gains, penalties for duplicate/spam comments.
+- **Terminal reward** (`done=true`): weighted grader score + quality shaping (early critical detection, actionability, coverage, false-positive penalties).
 
-This encourages:
-- **Accuracy** (primary signal)
-- **Actionable feedback** (suggested fixes bonus)
-- **Thoroughness** (coverage bonus)
-- **Precision** (false positive penalty)
+This provides a meaningful learning signal throughout the episode, not only at the terminal step.
 
 ---
 
@@ -253,7 +249,7 @@ response = requests.post("http://localhost:8000/reset", json={
 })
 observation = response.json()
 
-# Submit review action
+# Submit review action (can be partial in early steps)
 action = {
     "inline_comments": [
         {
@@ -269,7 +265,8 @@ action = {
     "decision": {
         "decision": "request_changes",
         "summary": "Critical security issues found"
-    }
+    },
+    "submit": True
 }
 
 response = requests.post("http://localhost:8000/step", json={"action": action})
@@ -283,23 +280,28 @@ print(f"Passed: {result['metadata']['passed']}")
 
 ## 📈 Baseline Results
 
-### OpenAI GPT-4 Turbo Baseline
+### Deterministic Baseline (Latest)
 
 ```bash
 # Set API key
 export OPENAI_API_KEY="your-key-here"
 
 # Run baseline
-python baseline/baseline_inference.py
+python baseline/baseline_inference.py \
+  --provider groq \
+  --model openai/gpt-oss-120b \
+  --temperature 0.0 \
+  --seed 42 \
+  --output baseline_results_groq_120b.json
 ```
 
 **Results**:
 | Task | Score | Passed | Precision | Recall |
 |------|-------|--------|-----------|--------|
-| Task 1 (Easy) | 0.82 | ✓ | 0.88 | 1.00 |
-| Task 2 (Medium) | 0.71 | ✗ | 0.75 | 0.71 |
-| Task 3 (Hard) | 0.63 | ✗ | 0.70 | 0.57 |
-| **Average** | **0.72** | - | - | - |
+| Task 1 (Easy) | 0.82 | ✗ | 0.50 | 1.00 |
+| Task 2 (Medium) | 0.64 | ✗ | 0.57 | 0.57 |
+| Task 3 (Hard) | 0.38 | ✗ | 0.33 | 0.29 |
+| **Average** | **0.61** | - | - | - |
 
 The hard task genuinely challenges frontier models!
 
@@ -318,9 +320,10 @@ The hard task genuinely challenges frontier models!
 
 ### Hackathon-Required Endpoints
 
-- `GET /baseline` - Pre-computed baseline scores
-- `POST /grader` - Standalone grading endpoint
-- `GET /tasks` - List all tasks with action schema
+- `GET /baseline` - Returns cached baseline results; use `?refresh=true` to trigger live baseline run
+- `POST /grader` - Standalone deterministic grading endpoint with request body:
+  - `{ "task_id": "...", "action": { ... } }`
+- `GET /tasks` - Lists tasks and returns machine-readable `Action` JSON schema
 
 ---
 
@@ -335,6 +338,9 @@ pytest tests/
 
 # Check OpenEnv compliance
 openenv validate
+
+# Run full pre-submission checklist
+./scripts/pre_submission_check.sh
 ```
 
 ---
@@ -374,24 +380,25 @@ Access at: `https://your-username-pr-review-env.hf.space`
 pr-review-env/
 ├── pr_review_env/
 │   ├── __init__.py
-│   ├── models.py                 # Pydantic models (Action, Observation)
-│   ├── client.py                 # Client for testing
+│   ├── models.py                 # Typed Action/Observation models
 │   └── server/
 │       ├── app.py                # FastAPI server
 │       ├── pr_review_environment.py  # Core environment logic
-│       ├── grader.py             # Grading algorithm
-│       └── scenarios.py          # PR generation
+│       └── grader.py             # Deterministic grading algorithm
+├── server/
+│   └── app.py                    # Compatibility entrypoint for validators
 ├── tasks/
 │   ├── task1_security_basic.json
 │   ├── task2_quality_logic.json
 │   └── task3_advanced_review.json
 ├── baseline/
-│   └── baseline_inference.py     # OpenAI baseline
+│   └── baseline_inference.py     # OpenAI-compatible baseline
 ├── tests/
 │   ├── test_environment.py
-│   └── test_grader.py
+│   └── test_api.py
 ├── openenv.yaml                  # OpenEnv specification
 ├── pyproject.toml                # Dependencies
+├── uv.lock                       # Resolver lock file for validation
 ├── Dockerfile                    # Container definition
 └── README.md
 ```

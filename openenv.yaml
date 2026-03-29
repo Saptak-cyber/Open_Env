@@ -1,6 +1,33 @@
 spec_version: 1
 name: pr_review_env
+description: Multi-step PR code review environment for evaluating agent quality on security, logic, and maintainability findings.
 type: space
 runtime: fastapi
 app: pr_review_env.server.app:app
 port: 8000
+entrypoints:
+  reset: /reset
+  step: /step
+  state: /state
+metadata:
+  domain: software_engineering
+  real_world_task: pull_request_review
+  tags:
+    - openenv
+    - code-review
+    - security
+    - evaluation
+  difficulties:
+    - easy
+    - medium
+    - hard
+  tasks:
+    - task_id: task1_security_basic
+      difficulty: easy
+      min_passing_score: 0.7
+    - task_id: task2_quality_logic
+      difficulty: medium
+      min_passing_score: 0.75
+    - task_id: task3_advanced_review
+      difficulty: hard
+      min_passing_score: 0.8
