@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml ./
 COPY pr_review_env/ ./pr_review_env/
 COPY tasks/ ./tasks/
-COPY baseline/ ./baseline/
+COPY inference.py ./
 
 # Install dependencies with uv
 RUN uv pip install --system --no-cache .
@@ -38,7 +38,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY pr_review_env/ ./pr_review_env/
 COPY tasks/ ./tasks/
-COPY baseline/ ./baseline/
+COPY inference.py ./
 COPY openenv.yaml ./
 COPY pyproject.toml ./
 

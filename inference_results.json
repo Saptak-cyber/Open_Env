@@ -6,11 +6,11 @@
   "env_url": "http://localhost:8000",
   "task_ids": [
     "task1_security_basic",
-    "task2_quality_logic",
     "task4_session_auth_medium",
+    "task2_quality_logic",
     "task3_advanced_review",
-    "task5_async_pipeline_hard",
-    "task6_data_export_hard"
+    "task6_data_export_hard",
+    "task5_async_pipeline_hard"
   ],
   "results": {
     "task1_security_basic": {
@@ -23,56 +23,56 @@
       "false_positives": 1,
       "false_negatives": 0
     },
-    "task2_quality_logic": {
-      "score": 0.5066666666666667,
-      "passed": false,
-      "precision": 0.5,
-      "recall": 0.6,
-      "severity_alignment": 0.6666666666666666,
-      "true_positives": 3,
-      "false_positives": 3,
-      "false_negatives": 2
-    },
     "task4_session_auth_medium": {
-      "score": 0.635,
+      "score": 0.665,
       "passed": false,
       "precision": 0.5,
       "recall": 1.0,
-      "severity_alignment": 0.625,
+      "severity_alignment": 0.75,
       "true_positives": 4,
       "false_positives": 4,
       "false_negatives": 0
     },
+    "task2_quality_logic": {
+      "score": 0.7195833333333334,
+      "passed": false,
+      "precision": 0.6666666666666666,
+      "recall": 0.8,
+      "severity_alignment": 0.875,
+      "true_positives": 4,
+      "false_positives": 2,
+      "false_negatives": 1
+    },
     "task3_advanced_review": {
-      "score": 0.215,
+      "score": 0.12999999999999995,
       "passed": false,
       "precision": 0.4,
       "recall": 0.2857142857142857,
-      "severity_alignment": 0.75,
+      "severity_alignment": 0.5,
       "true_positives": 2,
       "false_positives": 3,
       "false_negatives": 5
     },
-    "task5_async_pipeline_hard": {
-      "score": 0.2083333333333332,
-      "passed": false,
-      "precision": 0.5,
-      "recall": 0.6666666666666666,
-      "severity_alignment": 0.5,
-      "true_positives": 4,
-      "false_positives": 4,
-      "false_negatives": 2
-    },
     "task6_data_export_hard": {
-      "score": 0.6707142857142856,
+      "score": 0.5417857142857143,
       "passed": false,
-      "precision": 0.8571428571428571,
+      "precision": 0.75,
       "recall": 0.8571428571428571,
       "severity_alignment": 0.5,
       "true_positives": 6,
-      "false_positives": 1,
+      "false_positives": 2,
       "false_negatives": 1
+    },
+    "task5_async_pipeline_hard": {
+      "score": 0.5,
+      "passed": false,
+      "precision": 1.0,
+      "recall": 0.0,
+      "severity_alignment": 0.0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 6
     }
   },
-  "average_score": 0.5126190476190475
+  "average_score": 0.5660615079365079
 }
