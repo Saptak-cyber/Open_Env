@@ -1,0 +1,78 @@
+{
+  "provider": "openai_compatible",
+  "api_base_url": "https://router.huggingface.co/v1",
+  "model": "openai/gpt-oss-120b",
+  "temperature": 0.0,
+  "env_url": "http://localhost:8000",
+  "task_ids": [
+    "task1_security_basic",
+    "task2_quality_logic",
+    "task4_session_auth_medium",
+    "task3_advanced_review",
+    "task5_async_pipeline_hard",
+    "task6_data_export_hard"
+  ],
+  "results": {
+    "task1_security_basic": {
+      "score": 0.84,
+      "passed": false,
+      "precision": 0.6666666666666666,
+      "recall": 1.0,
+      "severity_alignment": 0.75,
+      "true_positives": 2,
+      "false_positives": 1,
+      "false_negatives": 0
+    },
+    "task2_quality_logic": {
+      "score": 0.5066666666666667,
+      "passed": false,
+      "precision": 0.5,
+      "recall": 0.6,
+      "severity_alignment": 0.6666666666666666,
+      "true_positives": 3,
+      "false_positives": 3,
+      "false_negatives": 2
+    },
+    "task4_session_auth_medium": {
+      "score": 0.635,
+      "passed": false,
+      "precision": 0.5,
+      "recall": 1.0,
+      "severity_alignment": 0.625,
+      "true_positives": 4,
+      "false_positives": 4,
+      "false_negatives": 0
+    },
+    "task3_advanced_review": {
+      "score": 0.215,
+      "passed": false,
+      "precision": 0.4,
+      "recall": 0.2857142857142857,
+      "severity_alignment": 0.75,
+      "true_positives": 2,
+      "false_positives": 3,
+      "false_negatives": 5
+    },
+    "task5_async_pipeline_hard": {
+      "score": 0.2083333333333332,
+      "passed": false,
+      "precision": 0.5,
+      "recall": 0.6666666666666666,
+      "severity_alignment": 0.5,
+      "true_positives": 4,
+      "false_positives": 4,
+      "false_negatives": 2
+    },
+    "task6_data_export_hard": {
+      "score": 0.6707142857142856,
+      "passed": false,
+      "precision": 0.8571428571428571,
+      "recall": 0.8571428571428571,
+      "severity_alignment": 0.5,
+      "true_positives": 6,
+      "false_positives": 1,
+      "false_negatives": 1
+    }
+  },
+  "average_score": 0.5126190476190475
+}
