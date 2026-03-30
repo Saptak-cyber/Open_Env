@@ -36,6 +36,24 @@ class ReviewGrader:
             "cache": {"cache", "ttl", "eviction", "memory"},
             "limit": {"limit", "pagination", "slice"},
             "exception": {"exception", "error", "swallow", "retry"},
+            # auth/session
+            "jwt": {"jwt", "token", "bearer", "claim", "claims"},
+            "refresh": {"refresh", "rotation", "rotate", "reissue"},
+            "logout": {"logout", "invalidate", "revocation", "revoke"},
+            "csrf": {"csrf", "xsrf", "sameSite", "samesite"},
+            "cookie": {"cookie", "httponly", "secure", "samesite"},
+            "rate": {"rate", "ratelimit", "throttle", "bruteforce", "brute-force"},
+            "session": {"session", "sid", "stateful"},
+            # async pipeline / webhooks
+            "webhook": {"webhook", "signature", "hmac"},
+            "replay": {"replay", "nonce", "timestamp", "freshness"},
+            "idempotency": {"idempotency", "idempotent", "dedupe", "dedup", "duplicate"},
+            "transaction": {"transaction", "atomic", "commit", "rollback"},
+            # data export / access control / multitenancy
+            "tenant": {"tenant", "tenancy", "org", "workspace", "account"},
+            "authorize": {"authorize", "authz", "authorization", "permission", "rbac", "acl"},
+            "pii": {"pii", "personal", "sensitive", "ssn", "email", "phone"},
+            "path": {"path", "filepath", "directory", "tmp", "tempfile", "symlink"},
         }
 
     def grade_review(

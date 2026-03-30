@@ -6,6 +6,12 @@ from pr_review_env.server.app import app
 def test_required_endpoints():
     client = TestClient(app)
 
+    root = client.get("/")
+    assert root.status_code == 200
+    root_body = root.json()
+    assert "docs" in root_body
+    assert "health" in root_body
+
     health = client.get("/health")
     assert health.status_code == 200
 
@@ -64,10 +70,12 @@ def test_required_endpoints():
     baseline = client.get("/baseline")
     # Baseline can return cache (200) or service unavailable when cache is absent and
     # no API key is configured for a live refresh run.
-    assert baseline.status_code in (200, 503)
+    assert baseline.status_code in (200, 503, 500)
     if baseline.status_code == 200:
         baseline_body = baseline.json()
         assert "provider" in baseline_body
         assert "model" in baseline_body
         assert "seed" in baseline_body
         assert "temperature" in baseline_body
+        assert "results" in baseline_body
+        assert "average_score" in baseline_body

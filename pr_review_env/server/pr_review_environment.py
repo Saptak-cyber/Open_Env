@@ -32,6 +32,7 @@ class PRReviewEnvironment(Environment):
         self.submitted_general_comments = []
         self.last_feedback = None
         self.reviewed_files = set()
+        self.files_with_issues = set()
 
         # Load all available tasks
         self.tasks = self._load_all_tasks()
@@ -109,6 +110,7 @@ class PRReviewEnvironment(Environment):
         # Extract PR state from task
         pr_data = self.current_task["pr_scenario"]
         self.current_pr = PRState(**pr_data)
+        self.files_with_issues = {i.file for i in self.current_pr.ground_truth.issues}
 
         # Reset episode flag
         self.episode_done = False
@@ -294,16 +296,25 @@ class PRReviewEnvironment(Environment):
             if c.file_path not in self.reviewed_files
         }
         self.reviewed_files.update(c.file_path for c in action.inline_comments)
-        file_coverage_bonus = 0.03 * len(newly_reviewed_files)
+        # Reward coverage only for files that actually contain ground-truth issues.
+        newly_covered_issue_files = newly_reviewed_files & (self.files_with_issues or set())
+        file_coverage_bonus = 0.03 * len(newly_covered_issue_files)
 
-        existing_keys = {
+        # Penalize duplicate root causes across steps, with near-duplicate tolerance (±1 line).
+        prior_comments = self.submitted_inline_comments[:-len(action.inline_comments or [])]
+        prior_keys = {
             (c.file_path, c.line_number, c.category)
-            for c in self.submitted_inline_comments[:-len(action.inline_comments or [])]
+            for c in prior_comments
         }
-        duplicate_count = sum(
-            1 for c in action.inline_comments
-            if (c.file_path, c.line_number, c.category) in existing_keys
-        )
+        def _is_dup(c) -> bool:
+            if (c.file_path, c.line_number, c.category) in prior_keys:
+                return True
+            # line jitter spam
+            for delta in (-1, 1):
+                if (c.file_path, c.line_number + delta, c.category) in prior_keys:
+                    return True
+            return False
+        duplicate_count = sum(1 for c in action.inline_comments if _is_dup(c))
 
         over_comment_penalty = max(0, len(action.inline_comments) - 4) * 0.01
         reward = (
@@ -311,7 +322,7 @@ class PRReviewEnvironment(Environment):
             + (0.08 * coverage_gain)
             + (0.05 * severity_gain)
             + file_coverage_bonus
-            - (0.06 * duplicate_count)
+            - (0.08 * duplicate_count)
             - over_comment_penalty
         )
         return max(-0.1, min(0.35, reward))

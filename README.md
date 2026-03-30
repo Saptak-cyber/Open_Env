@@ -328,16 +328,15 @@ print(f"Passed: {result['metadata']['passed']}")
 ### Deterministic Baseline (Latest)
 
 ```bash
-# Set API key
-export OPENAI_API_KEY="your-key-here"
+# Set required variables (OpenAI-compatible client via HF router)
+export API_BASE_URL="https://router.huggingface.co/v1"
+export MODEL_NAME="openai/gpt-oss-120b"
+export HF_TOKEN="your-hf-token"
 
-# Run baseline
-python baseline/baseline_inference.py \
-  --provider groq \
-  --model openai/gpt-oss-120b \
-  --temperature 0.0 \
-  --seed 42 \
-  --output baseline_results_groq_120b.json
+# Run inference baseline against a running env server
+python3 inference.py \
+  --env-url http://localhost:8000 \
+  --output inference_results.json
 ```
 
 **Results (3-task sample before expansion)**:
@@ -348,8 +347,8 @@ python baseline/baseline_inference.py \
 | Task 3 (Hard) | 0.77 | ✗ | 0.83 | 0.71 |
 | **Average** | **0.73** | - | - | - |
 
-For full 6-task runs, use the same command (defaults now include Tasks 1-6) and regenerate the artifact.
-Canonical artifact: `baseline_results_groq_120b.json`
+For full 6-task runs, use the same command (defaults include Tasks 1-6) and regenerate the artifact.
+Canonical artifact served by `/baseline`: `inference_results.json`
 
 ---
 

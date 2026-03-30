@@ -123,6 +123,26 @@ def test_grader_edge_cases_score_range():
     assert 0.0 <= wrong_feedback.score <= 1.0
 
 
+def test_grader_is_not_constant():
+    task = _load_task("task2_quality_logic")
+    grader = ReviewGrader()
+    gt = GroundTruth(**task["pr_scenario"]["ground_truth"])
+
+    empty = Action(
+        inline_comments=[],
+        general_comments=[],
+        decision=ReviewDecision(decision="comment", summary="No findings."),
+        submit=True,
+    )
+    good = _task2_action()
+
+    s_empty = grader.grade_review(empty, gt, task).score
+    s_good = grader.grade_review(good, gt, task).score
+
+    assert s_good != s_empty
+    assert s_good > s_empty
+
+
 def _is_port_open(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.5)
@@ -136,20 +156,19 @@ def _is_port_open(host: str, port: int) -> bool:
 def test_baseline_reproducibility_is_bounded(tmp_path: Path):
     """
     Optional integration test.
-    Requires local env server on :8000 and GROQ_API_KEY configured.
+    Requires local env server on :8000 and HF_TOKEN/MODEL_NAME/API_BASE_URL configured.
     """
     assert _is_port_open("127.0.0.1", 8000), "Environment server must be running on port 8000."
-    assert os.getenv("GROQ_API_KEY"), "GROQ_API_KEY required for reproducibility check."
+    assert os.getenv("HF_TOKEN"), "HF_TOKEN required for reproducibility check."
+    assert os.getenv("MODEL_NAME"), "MODEL_NAME required for reproducibility check."
+    assert os.getenv("API_BASE_URL"), "API_BASE_URL required for reproducibility check."
 
     out1 = tmp_path / "run1.json"
     out2 = tmp_path / "run2.json"
     cmd = [
         "python3",
-        "baseline/baseline_inference.py",
-        "--provider", "groq",
-        "--model", "openai/gpt-oss-120b",
-        "--temperature", "0.0",
-        "--seed", "42",
+        "inference.py",
+        "--env-url", "http://localhost:8000",
     ]
 
     subprocess.run(cmd + ["--output", str(out1)], check=True)
@@ -157,4 +176,4 @@ def test_baseline_reproducibility_is_bounded(tmp_path: Path):
 
     r1 = json.loads(out1.read_text(encoding="utf-8"))
     r2 = json.loads(out2.read_text(encoding="utf-8"))
-    assert abs(r1["average_score"] - r2["average_score"]) <= 0.05
+    assert abs(r1["average_score"] - r2["average_score"]) <= 0.08

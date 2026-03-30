@@ -66,8 +66,8 @@ curl http://localhost:8000/tasks
 # Get cached baseline scores
 curl http://localhost:8000/baseline
 
-# Trigger live baseline refresh (requires provider API key)
-curl "http://localhost:8000/baseline?refresh=true&provider=openai"
+# Trigger live baseline refresh (runs inference.py; requires HF_TOKEN, MODEL_NAME, API_BASE_URL)
+curl "http://localhost:8000/baseline?refresh=true"
 
 # Reset environment
 curl -X POST http://localhost:8000/reset \
@@ -75,14 +75,16 @@ curl -X POST http://localhost:8000/reset \
   -d '{"task_id": "task1_security_basic"}'
 ```
 
-### 4. Run Baseline Inference (Optional)
+### 4. Run Inference Baseline (Optional)
 
 ```bash
-# Set OpenAI API key
-export OPENAI_API_KEY="your-key-here"
+# Set required variables (OpenAI-compatible client via HF router)
+export API_BASE_URL="https://router.huggingface.co/v1"
+export MODEL_NAME="openai/gpt-oss-120b"
+export HF_TOKEN="your-hf-token"
 
-# Run baseline evaluation
-python3 baseline/baseline_inference.py --temperature 0.0 --seed 42
+# Run inference evaluation against local env server
+python3 inference.py --env-url http://localhost:8000 --output inference_results.json
 ```
 
 ### 5. Build and Test Docker

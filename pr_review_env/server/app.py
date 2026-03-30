@@ -44,6 +44,8 @@ def _normalize_baseline_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     payload.setdefault("model", "unknown")
     payload.setdefault("seed", None)
     payload.setdefault("temperature", None)
+    payload.setdefault("average_score", None)
+    payload.setdefault("results", {})
     payload.setdefault("task_ids", _default_task_ids())
     return payload
 
@@ -98,7 +100,7 @@ async def get_baseline_scores(
 
     # Refresh path: run inference.py to regenerate inference_results.json.
     try:
-        completed = subprocess.run(
+        subprocess.run(
             [
                 "python",
                 "inference.py",
@@ -112,7 +114,7 @@ async def get_baseline_scores(
             text=True,
         )
     except subprocess.CalledProcessError as e:
-        detail = e.stderr or e.stdout or str(e)
+        detail = (e.stderr or e.stdout or str(e))[-4000:]
         raise HTTPException(
             status_code=500,
             detail=f"Unable to run inference.py for baseline: {detail}",

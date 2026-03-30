@@ -32,6 +32,15 @@ VALID_INLINE_CATEGORIES = {
 VALID_GENERAL_CATEGORIES = {"architecture", "approach", "testing", "documentation", "general"}
 VALID_DECISIONS = {"approve", "request_changes", "comment"}
 
+TASK_COMMENT_BUDGET: Dict[str, int] = {
+    "task1_security_basic": 5,
+    "task2_quality_logic": 6,
+    "task3_advanced_review": 8,
+    "task4_session_auth_medium": 6,
+    "task5_async_pipeline_hard": 8,
+    "task6_data_export_hard": 8,
+}
+
 SYSTEM_PROMPT = """You are an expert software code reviewer.
 
 Review the PR diff and output ONLY valid JSON with this schema:
@@ -83,15 +92,60 @@ def extract_observation(payload: Dict[str, Any], endpoint: str) -> Dict[str, Any
         return observation
     raise ValueError(f"Unexpected {endpoint} response payload keys: {list(payload.keys())}")
 
+def _task_hint(task_id: str) -> str:
+    if task_id == "task1_security_basic":
+        return (
+            "Focus: obvious OWASP-style security issues only. "
+            "Prioritize precision over recall; skip uncertain findings."
+        )
+    if task_id == "task2_quality_logic":
+        return (
+            "Focus: security + logic + correctness issues. Prioritize these high-signal items: "
+            "race conditions/atomicity in payment flows, plaintext password storage (hash with bcrypt/argon2), "
+            "weak validation regex, and missing brute-force protections/rate limiting. "
+            "Avoid low-signal style nitpicks unless no substantive issues exist."
+        )
+    if task_id == "task3_advanced_review":
+        return (
+            "Focus: subtle architecture/reliability/performance issues. "
+            "Look for authorization gaps, cache invalidation/TTL, thread-safety, "
+            "exception swallowing, N+1 queries, and cross-tenant data access risks."
+        )
+    if task_id == "task4_session_auth_medium":
+        return (
+            "Focus: session/auth hardening. "
+            "Check JWT claim validation, refresh/logout correctness, replay risks, token rotation, "
+            "secure cookie flags, and storage semantics."
+        )
+    if task_id == "task5_async_pipeline_hard":
+        return (
+            "Focus: async pipeline integrity. "
+            "Check webhook signature validation, replay protection, idempotency/deduping under concurrency, "
+            "atomic updates/transactions, and cross-account update risks."
+        )
+    if task_id == "task6_data_export_hard":
+        return (
+            "Focus: secure data export workflows. "
+            "Check authorization/tenant scoping, PII access controls, temp file safety, "
+            "download ownership checks, and redirect/path traversal risks."
+        )
+    return ""
+
+def _severity_rank(sev: str) -> int:
+    order = {"info": 0, "warning": 1, "error": 2, "critical": 3}
+    return order.get(sev, 1)
+
 
 def build_prompt(pr_state: Dict[str, Any], task_id: str) -> str:
     md = pr_state.get("metadata", {})
+    hint = _task_hint(task_id)
     lines = [
         f"Task ID: {task_id}",
         f"PR: {pr_state.get('pr_id', 'unknown')}",
         f"Title: {md.get('title', '')}",
         f"Description: {md.get('description', '')}",
         f"Author: {md.get('author', '')}",
+        f"Task focus: {hint}" if hint else "",
         "",
         "Changed files:",
     ]
@@ -136,6 +190,67 @@ def _parse_line_number(value: Any) -> Optional[int]:
         if m:
             return int(m.group(0))
     return None
+
+def _normalized_text_tokens(text: str) -> List[str]:
+    tokens = re.findall(r"[a-z0-9]+", (text or "").lower())
+    norm = []
+    for t in tokens:
+        if len(t) > 4 and t.endswith("s"):
+            t = t[:-1]
+        if len(t) > 5 and t.endswith("ing"):
+            t = t[:-3]
+        if len(t) > 4 and t.endswith("ed"):
+            t = t[:-2]
+        norm.append(t)
+    return norm
+
+def _is_near_duplicate(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    if a.get("file_path") != b.get("file_path"):
+        return False
+    if a.get("category") != b.get("category"):
+        return False
+    la = a.get("line_number")
+    lb = b.get("line_number")
+    if not isinstance(la, int) or not isinstance(lb, int):
+        return False
+    if abs(la - lb) > 1:
+        return False
+    ta = set(_normalized_text_tokens(str(a.get("comment", ""))))
+    tb = set(_normalized_text_tokens(str(b.get("comment", ""))))
+    if not ta or not tb:
+        return True
+    overlap = len(ta & tb) / max(1, min(len(ta), len(tb)))
+    return overlap >= 0.6
+
+def _post_filter_inline_comments(inline: List[Dict[str, Any]], task_id: str) -> List[Dict[str, Any]]:
+    if not inline:
+        return inline
+
+    # Deterministic stable ordering: high severity first, then by file/line/category.
+    inline = sorted(
+        inline,
+        key=lambda c: (-_severity_rank(str(c.get("severity"))), str(c.get("file_path")), int(c.get("line_number", 0)), str(c.get("category"))),
+    )
+
+    # Remove near-duplicates.
+    filtered: List[Dict[str, Any]] = []
+    for c in inline:
+        if any(_is_near_duplicate(c, prev) for prev in filtered):
+            continue
+        filtered.append(c)
+
+    if task_id == "task2_quality_logic":
+        # Drop weak style-only findings when higher-severity findings exist.
+        has_error_or_critical = any(
+            str(c.get("severity")) in {"error", "critical"} for c in filtered
+        )
+        if has_error_or_critical:
+            filtered = [
+                c for c in filtered
+                if not (c.get("category") == "style" and str(c.get("severity")) in {"info", "warning"})
+            ]
+
+    return filtered
 
 
 def normalize_action(raw_action: Dict[str, Any], max_inline_comments: int = 8) -> Dict[str, Any]:
@@ -204,6 +319,11 @@ def normalize_action(raw_action: Dict[str, Any], max_inline_comments: int = 8) -
     if not isinstance(summary, str) or not summary.strip():
         summary = "Automated review generated by inference script."
 
+    inline_comments = _post_filter_inline_comments(
+        inline_comments,
+        task_id=str(raw_action.get("task_id") or ""),
+    )
+
     return {
         "inline_comments": inline_comments[:max_inline_comments],
         "general_comments": general_comments,
@@ -249,7 +369,11 @@ class InferenceRunner:
             response_format={"type": "json_object"},
         )
         content = completion.choices[0].message.content or "{}"
-        return normalize_action(parse_json_response(content))
+        raw = parse_json_response(content)
+        if isinstance(raw, dict):
+            raw["task_id"] = task_id
+        budget = TASK_COMMENT_BUDGET.get(task_id, 8)
+        return normalize_action(raw, max_inline_comments=budget)
 
     def run(self) -> Dict[str, Any]:
         task_ids = self._discover_tasks()
