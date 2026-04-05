@@ -12,7 +12,7 @@ import json
 import os
 import re
 from statistics import mean
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import requests
 from openai import OpenAI
@@ -23,7 +23,7 @@ API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN") or os.getenv("API
 MODEL_NAME = os.getenv("MODEL_NAME")
 ENV_URL = os.getenv("OPENENV_BASE_URL", "http://localhost:8000")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.0"))
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", "1800"))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "3072"))
 DEFAULT_OUTPUT = "inference_results.json"
 
 VALID_SEVERITIES = {"info", "warning", "error", "critical"}
@@ -176,14 +176,78 @@ def build_prompt(pr_state: Dict[str, Any], task_id: str) -> str:
     return "\n".join(lines)
 
 
+def _extract_outer_json_object(content: str) -> Optional[str]:
+    """
+    Return the first top-level {...} substring with balanced braces, respecting JSON strings.
+    Helps when the model wraps JSON in prose or when json.loads fails on trailing text.
+    """
+    start = content.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape_next = False
+    for i in range(start, len(content)):
+        ch = content[i]
+        if escape_next:
+            escape_next = False
+            continue
+        if in_string:
+            if ch == "\\":
+                escape_next = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return content[start : i + 1]
+    return None
+
+
+def _markdown_fence_body(content: str) -> Optional[str]:
+    m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
+    if m:
+        return m.group(1).strip()
+    return None
+
+
 def parse_json_response(content: str) -> Dict[str, Any]:
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", content, flags=re.DOTALL)
-        if fenced:
-            return json.loads(fenced.group(1))
-        raise
+    """
+    Parse model output into a dict. Tries full string, fenced blocks, and balanced {...} slice.
+    """
+    if content is None or not str(content).strip():
+        raise json.JSONDecodeError("Empty model content", "", 0)
+
+    raw = str(content).strip()
+    candidates: List[str] = []
+    for part in (raw, _markdown_fence_body(raw) or ""):
+        if not part:
+            continue
+        part = part.strip()
+        if part not in candidates:
+            candidates.append(part)
+        balanced = _extract_outer_json_object(part)
+        if balanced and balanced not in candidates:
+            candidates.append(balanced)
+
+    last_err: Optional[json.JSONDecodeError] = None
+    for cand in candidates:
+        try:
+            obj = json.loads(cand)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError as e:
+            last_err = e
+            continue
+    if last_err is not None:
+        raise last_err
+    raise json.JSONDecodeError("No JSON object found in model output", raw, 0)
 
 
 def _parse_line_number(value: Any) -> Optional[int]:
@@ -467,22 +531,51 @@ class InferenceRunner:
 
     def _review_with_model(self, pr_state: Dict[str, Any], task_id: str) -> Dict[str, Any]:
         prompt = build_prompt(pr_state, task_id)
-        completion = self.client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=self.temperature,
-            max_tokens=MAX_TOKENS,
-            response_format={"type": "json_object"},
-        )
-        content = completion.choices[0].message.content or "{}"
-        raw = parse_json_response(content)
-        if isinstance(raw, dict):
-            raw["task_id"] = task_id
         budget = TASK_COMMENT_BUDGET.get(task_id, 8)
-        return normalize_action(raw, max_inline_comments=budget)
+        max_tokens_try = MAX_TOKENS
+        last_err: Optional[Union[json.JSONDecodeError, ValueError]] = None
+
+        for attempt in range(3):
+            try:
+                completion = self.client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=self.temperature,
+                    max_tokens=max_tokens_try,
+                    response_format={"type": "json_object"},
+                )
+                content = completion.choices[0].message.content or "{}"
+                raw = parse_json_response(content)
+                if isinstance(raw, dict):
+                    raw["task_id"] = task_id
+                return normalize_action(raw, max_inline_comments=budget)
+            except (json.JSONDecodeError, ValueError) as e:
+                last_err = e
+                print(
+                    f"Warning: model JSON parse failed for {task_id} "
+                    f"(attempt {attempt + 1}/3, max_tokens={max_tokens_try}): {e}",
+                    flush=True,
+                )
+                # Truncation often yields "Unterminated string"; give the model more room.
+                max_tokens_try = min(max(max_tokens_try * 2, 2048), 8192)
+
+        print(
+            f"Warning: submitting empty review for {task_id} after JSON failures: {last_err}",
+            flush=True,
+        )
+        fallback: Dict[str, Any] = {
+            "task_id": task_id,
+            "inline_comments": [],
+            "general_comments": [],
+            "decision": {
+                "decision": "comment",
+                "summary": "Model returned invalid or truncated JSON; empty review submitted.",
+            },
+        }
+        return normalize_action(fallback, max_inline_comments=budget)
 
     def run(self) -> Dict[str, Any]:
         task_ids = self._discover_tasks()

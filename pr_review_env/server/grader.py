@@ -131,6 +131,15 @@ class ReviewGrader:
             severity_alignment=severity_alignment
         )
 
+    def _normalize_file_path(self, path: str) -> str:
+        """Normalize paths so model/repo style differences still match ground truth."""
+        if not path:
+            return ""
+        p = path.strip().replace("\\", "/")
+        while p.startswith("./"):
+            p = p[2:]
+        return p.lower()
+
     def _match_comments_to_issues(
         self,
         comments: List[InlineComment],
@@ -148,8 +157,20 @@ class ReviewGrader:
         matched_comments: Set[int] = set()
         matches: List[Dict[str, Any]] = []
 
-        # For each comment, find best matching issue
+        threshold = self._difficulty_match_threshold(difficulty)
+
+        # Process comments with fewest viable issues first to reduce greedy order bias.
+        flex_order: List[Tuple[int, int]] = []
         for comment_idx, comment in enumerate(comments):
+            viable = 0
+            for issue in issues:
+                if self._compute_match_score(comment, issue) > threshold:
+                    viable += 1
+            flex_order.append((viable, comment_idx))
+        flex_order.sort(key=lambda x: (x[0], x[1]))
+
+        for _, comment_idx in flex_order:
+            comment = comments[comment_idx]
             best_match_idx = None
             best_match_score = 0.0
 
@@ -157,15 +178,12 @@ class ReviewGrader:
                 if issue_idx in matched_issues:
                     continue
 
-                # Check if this comment matches this issue
                 match_score = self._compute_match_score(comment, issue)
 
-                threshold = self._difficulty_match_threshold(difficulty)
                 if match_score > best_match_score and match_score > threshold:
                     best_match_score = match_score
                     best_match_idx = issue_idx
 
-            # If found a match, record it
             if best_match_idx is not None:
                 matched_comments.add(comment_idx)
                 matched_issues.add(best_match_idx)
@@ -178,7 +196,6 @@ class ReviewGrader:
                     )
                 })
 
-        # Collect unmatched
         unmatched_comments = [
             c for idx, c in enumerate(comments)
             if idx not in matched_comments
@@ -206,8 +223,7 @@ class ReviewGrader:
         """
         score = 0.0
 
-        # File path must match
-        if comment.file_path != issue.file:
+        if self._normalize_file_path(comment.file_path) != self._normalize_file_path(issue.file):
             return 0.0
 
         score += 0.3  # File match
@@ -224,16 +240,21 @@ class ReviewGrader:
         if comment.category == issue.category:
             score += 0.2
 
-        # Keyword overlap with deterministic token normalization + synonyms
+        # Keyword overlap: comment text + optional suggested_fix (models often put evidence there)
         issue_keywords = self._normalized_tokens(issue.description)
-        comment_keywords = self._normalized_tokens(comment.comment)
+        comment_blob = comment.comment
+        if comment.suggested_fix:
+            comment_blob = f"{comment_blob} {comment.suggested_fix}"
+        comment_keywords = self._normalized_tokens(comment_blob)
         issue_expanded = self._expand_with_synonyms(issue_keywords)
         comment_expanded = self._expand_with_synonyms(comment_keywords)
         overlap = len(issue_expanded & comment_expanded)
         if overlap > 0:
             score += 0.1
+        if overlap >= 2:
+            score += 0.05
 
-        return score
+        return min(1.0, score)
 
     def _difficulty_match_threshold(self, difficulty: str) -> float:
         if difficulty == "easy":
@@ -335,13 +356,15 @@ class ReviewGrader:
         if len(ground_truth.issues) == 0:
             return 1.0
 
-        # Files with issues
-        files_with_issues = {issue.file for issue in ground_truth.issues}
+        files_with_issues = {
+            self._normalize_file_path(issue.file) for issue in ground_truth.issues
+        }
 
-        # Files that were reviewed
-        reviewed_files = {comment.file_path for comment in action.inline_comments}
+        reviewed_files = {
+            self._normalize_file_path(comment.file_path)
+            for comment in action.inline_comments
+        }
 
-        # Count covered files
         covered_files = files_with_issues & reviewed_files
 
         return len(covered_files) / len(files_with_issues)
