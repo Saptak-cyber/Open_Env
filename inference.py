@@ -23,7 +23,7 @@ API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN") or os.getenv("API
 MODEL_NAME = os.getenv("MODEL_NAME")
 ENV_URL = os.getenv("OPENENV_BASE_URL", "http://localhost:8000")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.0"))
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", "3072"))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4096"))
 DEFAULT_OUTPUT = "inference_results.json"
 # Total characters of hunk `content` to include per file (large PRs truncate deterministically).
 PROMPT_MAX_HUNK_CHARS = int(os.getenv("PROMPT_MAX_HUNK_CHARS", "12000"))
@@ -200,16 +200,59 @@ Rules:
 """
 
 
-def build_prompt(pr_state: Dict[str, Any], task_id: str) -> str:
+def _turn_focus_instruction(turn_index: int, total_turns: int, task_id: str) -> str:
+    if total_turns <= 1:
+        return "Single-turn review: provide your best complete review now."
+    if turn_index < total_turns - 1:
+        if turn_index == 0:
+            return (
+                "Turn strategy: prioritize high-confidence, high-severity findings first. "
+                "Avoid speculative comments."
+            )
+        if turn_index == 1:
+            return (
+                "Turn strategy: focus on correctness/logic/concurrency findings not already reported."
+            )
+        return "Turn strategy: focus on remaining gaps (performance, maintainability, and tests) not already reported."
+    return (
+        "Final turn strategy: provide only net-new findings and finalize with a concise decision summary."
+    )
+
+
+def _format_prior_findings(prior_inline: List[Dict[str, Any]], limit: int = 16) -> List[str]:
+    if not prior_inline:
+        return []
+    rows: List[str] = []
+    for c in prior_inline[:limit]:
+        rows.append(
+            f"- {c.get('file_path')}:{c.get('line_number')} "
+            f"[{c.get('category')}/{c.get('severity')}] {c.get('comment')}"
+        )
+    if len(prior_inline) > limit:
+        rows.append(f"- ... {len(prior_inline) - limit} more previously submitted findings")
+    return rows
+
+
+def build_prompt(
+    pr_state: Dict[str, Any],
+    task_id: str,
+    *,
+    turn_index: int = 0,
+    total_turns: int = 1,
+    prior_inline: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     md = pr_state.get("metadata", {})
     hint = _task_hint(task_id)
+    prior_inline = prior_inline or []
     lines = [
         f"Task ID: {task_id}",
+        f"Turn: {turn_index + 1}/{total_turns}",
         f"PR: {pr_state.get('pr_id', 'unknown')}",
         f"Title: {md.get('title', '')}",
         f"Description: {md.get('description', '')}",
         f"Author: {md.get('author', '')}",
         f"Task focus: {hint}" if hint else "",
+        f"Turn focus: {_turn_focus_instruction(turn_index, total_turns, task_id)}",
         "",
         "Changed files:",
     ]
@@ -250,6 +293,12 @@ def build_prompt(pr_state: Dict[str, Any], task_id: str) -> str:
                 lines.append(f"  @@ lines {sl}-{el} @@")
                 lines.extend(f"    {hl}" for hl in chunk.split("\n"))
                 hunk_budget -= len(chunk)
+
+    prior_lines = _format_prior_findings(prior_inline)
+    if prior_lines:
+        lines.append("\nPreviously submitted inline findings (do NOT repeat these root causes):")
+        lines.extend(prior_lines)
+        lines.append("Only add net-new issues in this turn.")
 
     lines.append("\nReturn JSON only. No markdown.")
     return "\n".join(lines)
@@ -544,6 +593,18 @@ def _post_filter_inline_comments(inline: List[Dict[str, Any]], task_id: str) -> 
     return filtered
 
 
+def _cross_turn_key(comment: Dict[str, Any]) -> tuple:
+    text_tokens = _normalized_text_tokens(str(comment.get("comment", "")))
+    # Stable, compact signature for cross-turn dedupe of same root cause.
+    text_sig = " ".join(text_tokens[:10])
+    return (
+        str(comment.get("file_path", "")).strip(),
+        int(comment.get("line_number", 0)),
+        str(comment.get("category", "")).strip(),
+        text_sig,
+    )
+
+
 def normalize_action(raw_action: Dict[str, Any], max_inline_comments: int = 8) -> Dict[str, Any]:
     if not isinstance(raw_action, dict):
         raw_action = {}
@@ -685,10 +746,23 @@ class InferenceRunner:
         return [t["task_id"] for t in tasks if isinstance(t, dict) and t.get("task_id")]
 
     def _review_task8_two_pass(
-        self, pr_state: Dict[str, Any], budget: int, *, finalize: bool
+        self,
+        pr_state: Dict[str, Any],
+        budget: int,
+        *,
+        finalize: bool,
+        turn_index: int = 0,
+        total_turns: int = 1,
+        prior_inline: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Optional scan + finalize pipeline for dense security PRs."""
-        prompt = build_prompt(pr_state, "task8_expert_security_review")
+        prompt = build_prompt(
+            pr_state,
+            "task8_expert_security_review",
+            turn_index=turn_index,
+            total_turns=total_turns,
+            prior_inline=prior_inline,
+        )
         max_tokens_try = MAX_TOKENS
         last_err: Optional[Union[json.JSONDecodeError, ValueError]] = None
         candidates: List[Dict[str, Any]] = []
@@ -759,12 +833,29 @@ class InferenceRunner:
             "task8_expert_security_review",
             budget,
             finalize=finalize,
+            turn_index=turn_index,
+            total_turns=total_turns,
+            prior_inline=prior_inline,
         )
 
     def _review_with_model_single(
-        self, pr_state: Dict[str, Any], task_id: str, budget: int, *, finalize: bool
+        self,
+        pr_state: Dict[str, Any],
+        task_id: str,
+        budget: int,
+        *,
+        finalize: bool,
+        turn_index: int = 0,
+        total_turns: int = 1,
+        prior_inline: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        prompt = build_prompt(pr_state, task_id)
+        prompt = build_prompt(
+            pr_state,
+            task_id,
+            turn_index=turn_index,
+            total_turns=total_turns,
+            prior_inline=prior_inline,
+        )
         max_tokens_try = MAX_TOKENS
         last_err: Optional[Union[json.JSONDecodeError, ValueError]] = None
 
@@ -818,14 +909,36 @@ class InferenceRunner:
         )
 
     def _review_with_model(
-        self, pr_state: Dict[str, Any], task_id: str, *, finalize: bool
+        self,
+        pr_state: Dict[str, Any],
+        task_id: str,
+        *,
+        finalize: bool,
+        turn_index: int = 0,
+        total_turns: int = 1,
+        prior_inline: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         budget = TASK_COMMENT_BUDGET.get(task_id, 8)
         if task_id == "task8_expert_security_review" and (
             INFERENCE_TASK8_TWO_PASS or self.task8_two_pass
         ):
-            return self._review_task8_two_pass(pr_state, budget, finalize=finalize)
-        return self._review_with_model_single(pr_state, task_id, budget, finalize=finalize)
+            return self._review_task8_two_pass(
+                pr_state,
+                budget,
+                finalize=finalize,
+                turn_index=turn_index,
+                total_turns=total_turns,
+                prior_inline=prior_inline,
+            )
+        return self._review_with_model_single(
+            pr_state,
+            task_id,
+            budget,
+            finalize=finalize,
+            turn_index=turn_index,
+            total_turns=total_turns,
+            prior_inline=prior_inline,
+        )
 
     def run(self) -> Dict[str, Any]:
         task_ids = self._discover_tasks()
@@ -847,11 +960,29 @@ class InferenceRunner:
             reset_obs = extract_observation(reset_resp.json(), "/reset")
 
             step_obs = reset_obs
+            cumulative_inline: List[Dict[str, Any]] = []
+            seen_cross_turn = set()
             for turn_idx in range(self.turns):
                 finalize = turn_idx == self.turns - 1
                 action = self._review_with_model(
-                    step_obs["pr_state"], task_id, finalize=finalize
+                    step_obs["pr_state"],
+                    task_id,
+                    finalize=finalize,
+                    turn_index=turn_idx,
+                    total_turns=self.turns,
+                    prior_inline=cumulative_inline,
                 )
+                # Remove comments that duplicate findings already submitted in
+                # earlier turns for this task.
+                deduped_inline: List[Dict[str, Any]] = []
+                for c in action.get("inline_comments", []) or []:
+                    k = _cross_turn_key(c)
+                    if k in seen_cross_turn:
+                        continue
+                    seen_cross_turn.add(k)
+                    deduped_inline.append(c)
+                action["inline_comments"] = deduped_inline
+                cumulative_inline.extend(deduped_inline)
                 print(
                     f"Turn {turn_idx + 1}/{self.turns} | "
                     f"generated {len(action['inline_comments'])} inline comments | "
@@ -939,16 +1070,20 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--task8-two-pass",
-        action="store_true",
-        help="Run task8_expert_security_review as scan + merge (two LLM calls). "
-        "Also enable with INFERENCE_TASK8_TWO_PASS=1.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Run task8_expert_security_review as scan + merge (two LLM calls). "
+            "Default: enabled. Use --no-task8-two-pass to disable. "
+            "INFERENCE_TASK8_TWO_PASS=1 also enables it."
+        ),
     )
     parser.add_argument(
         "--turns",
         type=int,
         choices=[1, 2, 3, 4, 5],
-        default=5,
-        help="Max turns per task episode (default: 5).",
+        default=3,
+        help="Max turns per task episode (default: 3).",
     )
     return parser.parse_args()
 

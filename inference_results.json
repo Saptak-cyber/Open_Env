@@ -6,13 +6,13 @@
   "env_url": "http://localhost:8000",
   "task_ids": [
     "task1_security_basic",
-    "task2_quality_logic",
     "task4_session_auth_medium",
-    "task3_advanced_review",
-    "task5_async_pipeline_hard",
+    "task2_quality_logic",
     "task8_expert_security_review",
+    "task3_advanced_review",
+    "task6_data_export_hard",
     "task7_pr_review_dvr_recorder",
-    "task6_data_export_hard"
+    "task5_async_pipeline_hard"
   ],
   "results": {
     "task1_security_basic": {
@@ -26,60 +26,60 @@
       "false_positives": 0,
       "false_negatives": 0
     },
-    "task2_quality_logic": {
-      "score": 0.7200000000000001,
-      "passed": false,
-      "min_passing_score": 0.75,
-      "precision": 1.0,
-      "recall": 0.6,
-      "severity_alignment": 0.3333333333333333,
-      "true_positives": 3,
-      "false_positives": 0,
-      "false_negatives": 2
-    },
     "task4_session_auth_medium": {
-      "score": 0.925,
-      "passed": true,
+      "score": 0.35,
+      "passed": false,
       "min_passing_score": 0.76,
       "precision": 1.0,
-      "recall": 1.0,
-      "severity_alignment": 0.625,
-      "true_positives": 4,
+      "recall": 0.0,
+      "severity_alignment": 0.0,
+      "true_positives": 0,
       "false_positives": 0,
-      "false_negatives": 0
+      "false_negatives": 4
+    },
+    "task2_quality_logic": {
+      "score": 0.4383333333333333,
+      "passed": false,
+      "min_passing_score": 0.75,
+      "precision": 0.6666666666666666,
+      "recall": 0.4,
+      "severity_alignment": 0.0,
+      "true_positives": 2,
+      "false_positives": 1,
+      "false_negatives": 3
+    },
+    "task8_expert_security_review": {
+      "score": 0.4758333333333334,
+      "passed": false,
+      "min_passing_score": 0.8,
+      "precision": 0.75,
+      "recall": 0.21428571428571427,
+      "severity_alignment": 0.6666666666666666,
+      "true_positives": 3,
+      "false_positives": 1,
+      "false_negatives": 11
     },
     "task3_advanced_review": {
-      "score": 0.49666666666666665,
+      "score": 0.3966666666666666,
       "passed": false,
       "min_passing_score": 0.8,
       "precision": 0.6666666666666666,
       "recall": 0.2857142857142857,
-      "severity_alignment": 0.75,
+      "severity_alignment": 0.25,
       "true_positives": 2,
       "false_positives": 1,
       "false_negatives": 5
     },
-    "task5_async_pipeline_hard": {
-      "score": 0.8,
+    "task6_data_export_hard": {
+      "score": 0.7672619047619047,
       "passed": false,
-      "min_passing_score": 0.82,
+      "min_passing_score": 0.84,
       "precision": 1.0,
-      "recall": 0.5,
-      "severity_alignment": 0.6666666666666666,
-      "true_positives": 3,
-      "false_positives": 0,
-      "false_negatives": 3
-    },
-    "task8_expert_security_review": {
-      "score": 0.43416666666666665,
-      "passed": false,
-      "min_passing_score": 0.8,
-      "precision": 0.6666666666666666,
-      "recall": 0.14285714285714285,
+      "recall": 0.2857142857142857,
       "severity_alignment": 0.75,
       "true_positives": 2,
-      "false_positives": 1,
-      "false_negatives": 12
+      "false_positives": 0,
+      "false_negatives": 5
     },
     "task7_pr_review_dvr_recorder": {
       "score": 0.21833333333333332,
@@ -92,17 +92,18 @@
       "false_positives": 2,
       "false_negatives": 1
     },
-    "task6_data_export_hard": {
-      "score": 0.7672619047619047,
+    "task5_async_pipeline_hard": {
+      "score": 0.775,
       "passed": false,
-      "min_passing_score": 0.84,
+      "min_passing_score": 0.82,
       "precision": 1.0,
-      "recall": 0.2857142857142857,
-      "severity_alignment": 0.75,
-      "true_positives": 2,
+      "recall": 0.5,
+      "severity_alignment": 0.5,
+      "true_positives": 3,
       "false_positives": 0,
-      "false_negatives": 5
+      "false_negatives": 3
     }
   },
-  "average_score": 0.6639285714285714
+  "average_score": 0.5464285714285714,
+  "turns": 3
 }
