@@ -18,6 +18,8 @@ from typing import Any, Dict, List, Optional, Union
 import requests
 from openai import OpenAI
 
+from pr_review_env.server.grader import ReviewGrader
+
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 # Prefer OpenAI-style key name, but allow Hugging Face token as well.
 API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN") or os.getenv("API_KEY")
@@ -1296,7 +1298,8 @@ class InferenceRunner:
                 },
             )
 
-        avg = mean([r["score"] for r in results.values()]) if results else 0.0
+        raw_avg = mean([r["score"] for r in results.values()]) if results else 0.0
+        avg = ReviewGrader.clamp_open_unit_interval(raw_avg)
         payload = {
             "provider": "openai_compatible",
             "api_base_url": API_BASE_URL,

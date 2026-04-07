@@ -135,7 +135,7 @@ class PRReviewEnvironment(Environment):
             pr_state=pr_state_for_agent,
             feedback=None,
             done=False,
-            reward=0.0,
+            reward=ReviewGrader.clamp_open_unit_interval(0.0),
             metadata={
                 "task_id": self.current_task["task_id"],
                 "difficulty": self.current_task["difficulty"],
@@ -282,8 +282,9 @@ class PRReviewEnvironment(Environment):
             fp_penalty
         )
 
-        # Bound to reasonable range
-        return max(-0.1, min(1.1, total_reward))
+        # Bound then map to strict (0, 1) for Phase-2 validators that scan step rewards.
+        bounded = max(-0.1, min(1.1, total_reward))
+        return ReviewGrader.clamp_open_unit_interval(bounded)
 
     def _compute_intermediate_reward(self, partial_feedback, action: Action) -> float:
         """
@@ -332,7 +333,8 @@ class PRReviewEnvironment(Environment):
             - (0.08 * duplicate_count)
             - over_comment_penalty
         )
-        return max(-0.1, min(0.35, reward))
+        bounded = max(-0.1, min(0.35, reward))
+        return ReviewGrader.clamp_open_unit_interval(bounded)
 
     def _compute_early_detection_bonus(self, action: Action) -> float:
         """Bonus for finding critical issues in early files."""

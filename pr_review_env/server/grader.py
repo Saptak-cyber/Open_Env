@@ -21,7 +21,13 @@ from ..models import (
 
 class ReviewGrader:
     """Grades code review actions against ground truth."""
-    SCORE_EPSILON = 1e-6
+    SCORE_EPSILON = 1e-4
+
+    @staticmethod
+    def clamp_open_unit_interval(value: float, epsilon: Optional[float] = None) -> float:
+        """Map a value into (0, 1) for hackathon Phase-2 validators (strict open interval)."""
+        eps = ReviewGrader.SCORE_EPSILON if epsilon is None else float(epsilon)
+        return max(eps, min(1.0 - eps, float(value)))
 
     def __init__(self, line_tolerance: int = 2):
         """
@@ -144,7 +150,11 @@ class ReviewGrader:
         )
 
         # Validator requires strict open interval: 0 < score < 1.
-        score = max(self.SCORE_EPSILON, min(1.0 - self.SCORE_EPSILON, score))
+        score = self.clamp_open_unit_interval(score)
+        precision = self.clamp_open_unit_interval(precision)
+        recall = self.clamp_open_unit_interval(recall)
+        coverage = self.clamp_open_unit_interval(coverage)
+        severity_alignment = self.clamp_open_unit_interval(severity_alignment)
 
         return ReviewFeedback(
             score=score,
