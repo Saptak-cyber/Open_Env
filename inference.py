@@ -93,8 +93,6 @@ def require_env() -> None:
     missing = []
     if not API_KEY:
         missing.append("OPENAI_API_KEY or HF_TOKEN")
-    if not MODEL_NAME:
-        missing.append("MODEL_NAME")
     if missing:
         raise RuntimeError(f"Missing required environment variable(s): {', '.join(missing)}")
 
@@ -772,6 +770,7 @@ class InferenceRunner:
         env_url: str,
         output: str,
         task_ids: Optional[List[str]] = None,
+        model_name: Optional[str] = None,
         temperature: float = TEMPERATURE,
         task8_two_pass: bool = False,
         turns: int = 5,
@@ -786,7 +785,38 @@ class InferenceRunner:
         self.max_runtime_seconds = max(0, int(max_runtime_seconds))
         self.http = requests.Session()
         self.client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        self.model_name = self._resolve_model_name(model_name)
         self.task_thresholds: Dict[str, float] = {}
+
+    def _resolve_model_name(self, candidate: Optional[str]) -> str:
+        """
+        Resolve model id robustly for validator environments.
+        Priority: explicit --model > MODEL_NAME > common fallbacks > /models discovery.
+        """
+        for c in (
+            candidate,
+            MODEL_NAME,
+            os.getenv("OPENAI_MODEL"),
+            os.getenv("HF_MODEL"),
+            os.getenv("MODEL"),
+        ):
+            if isinstance(c, str) and c.strip():
+                return c.strip()
+
+        # Last resort: try listing provider models and pick first id.
+        try:
+            models = self.client.models.list()
+            data = getattr(models, "data", None) or []
+            for m in data:
+                mid = getattr(m, "id", None)
+                if isinstance(mid, str) and mid.strip():
+                    return mid.strip()
+        except Exception:
+            pass
+
+        raise RuntimeError(
+            "Missing model name. Set MODEL_NAME (or --model), or expose /models on API_BASE_URL for auto-discovery."
+        )
 
     def _discover_tasks(self) -> List[str]:
         resp = self.http.get(f"{self.env_url}/tasks", timeout=20)
@@ -829,7 +859,7 @@ class InferenceRunner:
         for attempt in range(2):
             try:
                 scan = self.client.chat.completions.create(
-                    model=MODEL_NAME,
+                    model=self.model_name,
                     messages=[
                         {"role": "system", "content": TASK8_SCAN_SYSTEM},
                         {"role": "user", "content": prompt},
@@ -857,7 +887,7 @@ class InferenceRunner:
         for attempt in range(3):
             try:
                 completion = self.client.chat.completions.create(
-                    model=MODEL_NAME,
+                    model=self.model_name,
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": merge_user},
@@ -934,7 +964,7 @@ class InferenceRunner:
         for attempt in range(3):
             try:
                 completion = self.client.chat.completions.create(
-                    model=MODEL_NAME,
+                    model=self.model_name,
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": prompt},
@@ -1036,6 +1066,7 @@ class InferenceRunner:
                 "event": "run",
                 "task_count": len(task_ids),
                 "task_ids": task_ids,
+                "model": self.model_name,
                 "turns": self.turns,
                 "max_runtime_seconds": self.max_runtime_seconds,
             },
@@ -1146,7 +1177,7 @@ class InferenceRunner:
         payload = {
             "provider": "openai_compatible",
             "api_base_url": API_BASE_URL,
-            "model": MODEL_NAME,
+            "model": self.model_name,
             "temperature": self.temperature,
             "env_url": self.env_url,
             "task_ids": task_ids,
@@ -1191,6 +1222,11 @@ def parse_args() -> argparse.Namespace:
         help=f"Path to output JSON file (default: {DEFAULT_OUTPUT})",
     )
     parser.add_argument(
+        "--model",
+        default=MODEL_NAME,
+        help="Model identifier (default: MODEL_NAME env; auto-discovered from /models if missing)",
+    )
+    parser.add_argument(
         "--temperature",
         type=float,
         default=TEMPERATURE,
@@ -1229,6 +1265,7 @@ def main() -> None:
         env_url=args.env_url,
         output=args.output,
         task_ids=args.task_ids,
+        model_name=args.model,
         temperature=args.temperature,
         task8_two_pass=args.task8_two_pass,
         turns=args.turns,
