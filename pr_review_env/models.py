@@ -5,7 +5,7 @@ These models define the action and observation spaces for the OpenEnv interface.
 """
 
 from typing import List, Optional, Literal, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict, RootModel
+from pydantic import BaseModel, Field, ConfigDict, RootModel, model_validator
 from openenv.core.env_server.types import (
     Action as BaseAction,
     Observation as BaseObservation,
@@ -171,6 +171,15 @@ class ReviewFeedback(BaseModel):
         gt=0.0, lt=1.0,
         description="How well severity levels match ground truth"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def clamp_scores(cls, values: Any) -> Any:
+        _eps = 1e-4
+        for field in ("score", "precision", "recall", "coverage", "severity_alignment"):
+            if field in values and values[field] is not None:
+                values[field] = max(_eps, min(1.0 - _eps, float(values[field])))
+        return values
 
 
 class Reward(RootModel[float]):
