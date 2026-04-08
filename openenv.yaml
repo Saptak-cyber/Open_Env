@@ -35,8 +35,8 @@ metadata:
       difficulty: hard
       min_passing_score: 0.8
     - task_id: task6_data_export_hard
-      difficulty: hard
-      min_passing_score: 0.82
+      difficulty: easy
+      min_passing_score: 0.84
     - task_id: task7_pr_review_dvr_recorder
       difficulty: hard
       min_passing_score: 0.8
