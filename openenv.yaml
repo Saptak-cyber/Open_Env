@@ -22,9 +22,6 @@ metadata:
     - medium
     - hard
   tasks:
-    - task_id: task1_security_basic
-      difficulty: easy
-      min_passing_score: 0.7
     - task_id: task2_quality_logic
       difficulty: medium
       min_passing_score: 0.75

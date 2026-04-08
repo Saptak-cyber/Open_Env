@@ -5,7 +5,6 @@
   "temperature": 0.0,
   "env_url": "http://localhost:8000",
   "task_ids": [
-    "task1_security_basic",
     "task4_session_auth_medium",
     "task2_quality_logic",
     "task8_expert_security_review",
@@ -15,17 +14,6 @@
     "task5_async_pipeline_hard"
   ],
   "results": {
-    "task1_security_basic": {
-      "score": 0.9499,
-      "passed": true,
-      "min_passing_score": 0.7,
-      "precision": 0.9999,
-      "recall": 0.9999,
-      "severity_alignment": 0.75,
-      "true_positives": 2,
-      "false_positives": 0,
-      "false_negatives": 0
-    },
     "task4_session_auth_medium": {
       "score": 0.35,
       "passed": false,
@@ -104,6 +92,6 @@
       "false_negatives": 3
     }
   },
-  "average_score": 0.5464,
+  "average_score": 0.4888,
   "turns": 3
 }

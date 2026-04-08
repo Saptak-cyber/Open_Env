@@ -49,8 +49,6 @@ VALID_GENERAL_CATEGORIES = {"architecture", "approach", "testing", "documentatio
 VALID_DECISIONS = {"approve", "request_changes", "comment"}
 
 TASK_COMMENT_BUDGET: Dict[str, int] = {
-    "task1_security_basic": 3,
-    "task1_security_basic": 3,
     "task2_quality_logic": 6,
     "task3_advanced_review": 8,
     "task4_session_auth_medium": 5,
@@ -113,11 +111,6 @@ def extract_observation(payload: Dict[str, Any], endpoint: str) -> Dict[str, Any
     raise ValueError(f"Unexpected {endpoint} response payload keys: {list(payload.keys())}")
 
 def _task_hint(task_id: str) -> str:
-    if task_id == "task1_security_basic":
-        return (
-            "Focus: obvious OWASP-style security issues only. "
-            "Prioritize precision over recall; skip uncertain findings."
-        )
     if task_id == "task2_quality_logic":
         return (
             "Focus: security + logic + correctness issues. Prioritize these high-signal items: "
@@ -584,13 +577,6 @@ def _post_filter_inline_comments(inline: List[Dict[str, Any]], task_id: str) -> 
         if any(_is_dup_with_threshold(c, prev) for prev in filtered):
             continue
         filtered.append(c)
-
-    if task_id == "task1_security_basic":
-        # Prioritize precision: keep only strong security findings.
-        filtered = [
-            c for c in filtered
-            if _is_security_comment(c) and str(c.get("severity")) in {"error", "critical"}
-        ]
 
     if task_id == "task2_quality_logic":
         # Drop weak style-only findings when higher-severity findings exist.

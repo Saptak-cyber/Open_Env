@@ -1,7 +1,7 @@
 {
   "task_id": "task6_data_export_hard",
   "name": "Secure Data Export and Audit Reliability",
-  "difficulty": "hard",
+  "difficulty": "easy",
   "min_passing_score": 0.84,
   "grading_weights": {
     "precision": 0.55,
