@@ -160,15 +160,15 @@ class ReviewFeedback(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    score: float = Field(ge=0.0, le=1.0, description="Overall review score")
+    score: float = Field(gt=0.0, lt=1.0, description="Overall review score")
     true_positives: int = Field(description="Correctly identified issues")
     false_positives: int = Field(description="Incorrectly flagged issues")
     false_negatives: int = Field(description="Missed issues")
-    coverage: float = Field(ge=0.0, le=1.0, description="% of critical lines reviewed")
-    precision: float = Field(ge=0.0, le=1.0)
-    recall: float = Field(ge=0.0, le=1.0)
+    coverage: float = Field(gt=0.0, lt=1.0, description="% of critical lines reviewed")
+    precision: float = Field(gt=0.0, lt=1.0)
+    recall: float = Field(gt=0.0, lt=1.0)
     severity_alignment: float = Field(
-        ge=0.0, le=1.0,
+        gt=0.0, lt=1.0,
         description="How well severity levels match ground truth"
     )
 

@@ -1272,16 +1272,17 @@ class InferenceRunner:
                     break
             feedback = step_obs.get("feedback") or {}
 
-            score = float(feedback.get("score", 0.0))
+            _clamp = ReviewGrader.clamp_open_unit_interval
+            score = _clamp(float(feedback.get("score", 0.0)))
             threshold = float(self.task_thresholds.get(task_id, 0.0))
             passed = score >= threshold if threshold > 0 else bool(step_obs.get("metadata", {}).get("passed", False))
             results[task_id] = {
                 "score": score,
                 "passed": passed,
                 "min_passing_score": threshold if threshold > 0 else None,
-                "precision": feedback.get("precision", 0.0),
-                "recall": feedback.get("recall", 0.0),
-                "severity_alignment": feedback.get("severity_alignment", 0.0),
+                "precision": _clamp(float(feedback.get("precision", 0.0))),
+                "recall": _clamp(float(feedback.get("recall", 0.0))),
+                "severity_alignment": _clamp(float(feedback.get("severity_alignment", 0.0))),
                 "true_positives": feedback.get("true_positives", 0),
                 "false_positives": feedback.get("false_positives", 0),
                 "false_negatives": feedback.get("false_negatives", 0),
