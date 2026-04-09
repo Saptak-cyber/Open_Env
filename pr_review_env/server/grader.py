@@ -4,6 +4,7 @@ Grader for PR Code Review Assistant.
 Implements deterministic grading with comment-to-issue matching.
 """
 
+import math
 import re
 from typing import List, Dict, Any, Set, Tuple, Optional
 
@@ -27,7 +28,10 @@ class ReviewGrader:
     def clamp_open_unit_interval(value: float, epsilon: Optional[float] = None) -> float:
         """Map a value into (0, 1) for hackathon Phase-2 validators (strict open interval)."""
         eps = ReviewGrader.SCORE_EPSILON if epsilon is None else float(epsilon)
-        return max(eps, min(1.0 - eps, float(value)))
+        x = float(value)
+        if not math.isfinite(x):
+            return eps
+        return max(eps, min(1.0 - eps, x))
 
     def __init__(self, line_tolerance: int = 2):
         """
@@ -376,15 +380,19 @@ class ReviewGrader:
         """Calculate precision."""
         total = true_positives + false_positives
         if total == 0:
-            return 1.0  # No comments = no false positives
-        return true_positives / total
+            # No comments submitted → technically perfect precision (no FPs).
+            return self.clamp_open_unit_interval(1.0)
+        raw = true_positives / total
+        return self.clamp_open_unit_interval(raw)
 
     def _calculate_recall(self, true_positives: int, false_negatives: int) -> float:
         """Calculate recall."""
         total = true_positives + false_negatives
         if total == 0:
-            return 1.0  # No issues = perfect recall
-        return true_positives / total
+            # No ground-truth issues → perfect recall.
+            return self.clamp_open_unit_interval(1.0)
+        raw = true_positives / total
+        return self.clamp_open_unit_interval(raw)
 
     def _calculate_coverage(self, action: Action, ground_truth: GroundTruth) -> float:
         """
@@ -393,7 +401,7 @@ class ReviewGrader:
         Simplification: If any comment on a file with issues, count as covered.
         """
         if len(ground_truth.issues) == 0:
-            return 1.0
+            return self.clamp_open_unit_interval(1.0)
 
         files_with_issues = {
             self._normalize_file_path(issue.file) for issue in ground_truth.issues
@@ -406,15 +414,17 @@ class ReviewGrader:
 
         covered_files = files_with_issues & reviewed_files
 
-        return len(covered_files) / len(files_with_issues)
+        raw = len(covered_files) / len(files_with_issues)
+        return self.clamp_open_unit_interval(raw)
 
     def _calculate_severity_alignment(self, matches: List[Dict[str, Any]]) -> float:
         """Calculate average severity alignment across all matches."""
         if len(matches) == 0:
-            return 0.0
+            return self.clamp_open_unit_interval(0.0)
 
         total_alignment = sum(m["severity_match_score"] for m in matches)
-        return total_alignment / len(matches)
+        raw = total_alignment / len(matches)
+        return self.clamp_open_unit_interval(raw)
 
     def _calculate_weighted_score(
         self,
@@ -435,13 +445,14 @@ class ReviewGrader:
         ws = float(weights.get("severity", 0.0))
         denom = wp + wr + wc + ws
         if denom <= 0:
-            return 0.0
-        return (
+            return self.clamp_open_unit_interval(0.0)
+        raw = (
             wp * precision
             + wr * recall
             + wc * coverage
             + ws * severity_alignment
         ) / denom
+        return self.clamp_open_unit_interval(raw)
 
     def _apply_decision_penalties(
         self,

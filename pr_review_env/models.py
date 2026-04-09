@@ -4,6 +4,7 @@ Pydantic models for PR Code Review Assistant environment.
 These models define the action and observation spaces for the OpenEnv interface.
 """
 
+import math
 from typing import List, Optional, Literal, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict, RootModel, model_validator
 from openenv.core.env_server.types import (
@@ -176,9 +177,15 @@ class ReviewFeedback(BaseModel):
     @classmethod
     def clamp_scores(cls, values: Any) -> Any:
         _eps = 1e-4
+        if not isinstance(values, dict):
+            return values
         for field in ("score", "precision", "recall", "coverage", "severity_alignment"):
             if field in values and values[field] is not None:
-                values[field] = max(_eps, min(1.0 - _eps, float(values[field])))
+                x = float(values[field])
+                # Guard against NaN / ±inf which Python's max/min do not handle reliably.
+                if not math.isfinite(x):
+                    x = _eps
+                values[field] = max(_eps, min(1.0 - _eps, x))
         return values
 
 
