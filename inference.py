@@ -1147,14 +1147,36 @@ class InferenceRunner:
         if task_id == "task8_expert_security_review" and (
             INFERENCE_TASK8_TWO_PASS or self.task8_two_pass
         ):
-            return self._review_task8_two_pass(
-                pr_state,
-                budget,
-                finalize=finalize,
-                turn_index=turn_index,
-                total_turns=total_turns,
-                prior_inline=prior_inline,
-            )
+            try:
+                return self._review_task8_two_pass(
+                    pr_state,
+                    budget,
+                    finalize=finalize,
+                    turn_index=turn_index,
+                    total_turns=total_turns,
+                    prior_inline=prior_inline,
+                )
+            except Exception as e:
+                emit_log(
+                    "STEP",
+                    {
+                        "event": "warning",
+                        "task_id": task_id,
+                        "warning_type": "task8_two_pass_exception",
+                        "message": str(e)[:300],
+                    },
+                )
+                # Never crash the whole run because task8 two-pass failed.
+                # Fall back to single-pass review for resiliency in validator runs.
+                return self._review_with_model_single(
+                    pr_state,
+                    task_id,
+                    budget,
+                    finalize=finalize,
+                    turn_index=turn_index,
+                    total_turns=total_turns,
+                    prior_inline=prior_inline,
+                )
         return self._review_with_model_single(
             pr_state,
             task_id,
@@ -1214,14 +1236,44 @@ class InferenceRunner:
             seen_cross_turn = set()
             for turn_idx in range(self.turns):
                 finalize = turn_idx == self.turns - 1
-                action = self._review_with_model(
-                    step_obs["pr_state"],
-                    task_id,
-                    finalize=finalize,
-                    turn_index=turn_idx,
-                    total_turns=self.turns,
-                    prior_inline=cumulative_inline,
-                )
+                try:
+                    action = self._review_with_model(
+                        step_obs["pr_state"],
+                        task_id,
+                        finalize=finalize,
+                        turn_index=turn_idx,
+                        total_turns=self.turns,
+                        prior_inline=cumulative_inline,
+                    )
+                except Exception as e:
+                    emit_log(
+                        "STEP",
+                        {
+                            "event": "warning",
+                            "task_id": task_id,
+                            "warning_type": "turn_generation_exception",
+                            "turn": turn_idx + 1,
+                            "message": str(e)[:300],
+                        },
+                    )
+                    # Keep the episode alive with a safe fallback action.
+                    action = normalize_action_for_turn(
+                        {
+                            "task_id": task_id,
+                            "inline_comments": [],
+                            "general_comments": [],
+                            "decision": {
+                                "decision": "comment",
+                                "summary": (
+                                    "Model generation failed for this turn; "
+                                    "submitted fallback action."
+                                ),
+                            },
+                        },
+                        task_id=task_id,
+                        budget=TASK_COMMENT_BUDGET.get(task_id, 8),
+                        finalize=finalize,
+                    )
                 # Remove comments that duplicate findings already submitted in
                 # earlier turns for this task.
                 deduped_inline: List[Dict[str, Any]] = []
