@@ -1322,9 +1322,10 @@ class InferenceRunner:
                     },
                 )
                 # Validator-mandated [STEP] line (key=value, stdout).
+                # Use enough precision that epsilon-sized rewards (1e-4) do not round to "0.00".
                 print(
                     f"[STEP] step={turn_idx + 1} action=pr_review"
-                    f" reward={step_reward:.2f} done={str(done).lower()} error=null",
+                    f" reward={step_reward:.4f} done={str(done).lower()} error=null",
                     flush=True,
                 )
 
@@ -1360,10 +1361,10 @@ class InferenceRunner:
             )
             # Validator-mandated [END] line (key=value, stdout).
             # score is strictly in (0, 1) via clamp_open_unit_interval.
-            rewards_str = ",".join(f"{r:.2f}" for r in step_rewards)
+            rewards_str = ",".join(f"{r:.4f}" for r in step_rewards)
             print(
                 f"[END] success={str(passed).lower()} steps={steps_taken}"
-                f" score={score:.4f} rewards={rewards_str}",
+                f" score={score:.6f} rewards={rewards_str}",
                 flush=True,
             )
 
