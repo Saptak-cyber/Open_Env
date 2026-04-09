@@ -399,9 +399,11 @@ def parse_json_response(content: str) -> Dict[str, Any]:
 
 def emit_log(tag: str, fields: Dict[str, Any]) -> None:
     """
-    Emit structured stdout logs in required validator-friendly format.
+    Emit structured debug logs to stderr (internal use only).
+    stdout is reserved exclusively for the validator-mandated key=value format.
     """
-    print(f"[{tag}] {json.dumps(fields, ensure_ascii=False, separators=(',', ':'))}", flush=True)
+    import sys
+    print(f"[{tag}] {json.dumps(fields, ensure_ascii=False, separators=(',', ':'))}", file=sys.stderr, flush=True)
 
 
 def _parse_line_number(value: Any) -> Optional[int]:
@@ -1222,7 +1224,10 @@ class InferenceRunner:
                 )
                 break
 
+            # Validator-mandated [START] line (key=value, stdout).
+            print(f"[START] task={task_id} env=pr_review model={self.model_name}", flush=True)
             emit_log("START", {"event": "task", "task_id": task_id})
+
             reset_resp = self.http.post(
                 f"{self.env_url}/reset",
                 json={"task_id": task_id},
@@ -1234,6 +1239,8 @@ class InferenceRunner:
             step_obs = reset_obs
             cumulative_inline: List[Dict[str, Any]] = []
             seen_cross_turn = set()
+            step_rewards: List[float] = []
+            steps_taken = 0
             for turn_idx in range(self.turns):
                 finalize = turn_idx == self.turns - 1
                 try:
@@ -1285,6 +1292,22 @@ class InferenceRunner:
                     deduped_inline.append(c)
                 action["inline_comments"] = deduped_inline
                 cumulative_inline.extend(deduped_inline)
+
+                step_resp = self.http.post(
+                    f"{self.env_url}/step",
+                    json={"action": action},
+                    timeout=30,
+                )
+                step_resp.raise_for_status()
+                step_obs = extract_observation(step_resp.json(), "/step")
+
+                # Per-step reward from environment (already clamped by environment).
+                raw_step_reward = step_obs.get("reward") or 0.0
+                step_reward = ReviewGrader.clamp_open_unit_interval(float(raw_step_reward))
+                step_rewards.append(step_reward)
+                steps_taken = turn_idx + 1
+                done = bool(step_obs.get("done", False))
+
                 decision = action.get("decision")
                 emit_log(
                     "STEP",
@@ -1298,15 +1321,14 @@ class InferenceRunner:
                         "decision": decision.get("decision") if isinstance(decision, dict) else None,
                     },
                 )
-
-                step_resp = self.http.post(
-                    f"{self.env_url}/step",
-                    json={"action": action},
-                    timeout=30,
+                # Validator-mandated [STEP] line (key=value, stdout).
+                print(
+                    f"[STEP] step={turn_idx + 1} action=pr_review"
+                    f" reward={step_reward:.2f} done={str(done).lower()} error=null",
+                    flush=True,
                 )
-                step_resp.raise_for_status()
-                step_obs = extract_observation(step_resp.json(), "/step")
-                if step_obs.get("done"):
+
+                if done:
                     break
             feedback = step_obs.get("feedback") or {}
 
@@ -1335,6 +1357,14 @@ class InferenceRunner:
                     "precision": results[task_id]["precision"],
                     "recall": results[task_id]["recall"],
                 },
+            )
+            # Validator-mandated [END] line (key=value, stdout).
+            # score is strictly in (0, 1) via clamp_open_unit_interval.
+            rewards_str = ",".join(f"{r:.2f}" for r in step_rewards)
+            print(
+                f"[END] success={str(passed).lower()} steps={steps_taken}"
+                f" score={score:.4f} rewards={rewards_str}",
+                flush=True,
             )
 
         raw_avg = mean([r["score"] for r in results.values()]) if results else 0.0
